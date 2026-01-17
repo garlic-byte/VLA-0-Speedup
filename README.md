@@ -1,6 +1,6 @@
-# VLA-0-Accelerated: 20x Faster VLA Model Training
-[![GitHub Stars](https://img.shields.io/github/stars/your-username/VLA-0-Accelerated?style=social)](https://github.com/your-username/VLA-0-Accelerated)
-[![GitHub License](https://img.shields.io/github/license/your-username/VLA-0-Accelerated)](LICENSE)
+# VLA-0-Speedup: 20x Faster VLA Model Training
+[![GitHub Stars](https://img.shields.io/github/stars/your-username/VLA-0-Speedup?style=social)](https://github.com/your-username/VLA-0-Speedup)
+[![GitHub License](https://img.shields.io/github/license/your-username/VLA-0-Speedup)](LICENSE)
 
 ## Project Overview
 This project is an **accelerated version of the VLA-0 project** with **20x faster training speed**. It is a lightweight replication of NVIDIA's [Isaac-GR00T](https://github.com/NVIDIA/Isaac-GR00T) project, optimized by reworking core logic from VLA-0 (leveraging ideas from the VLA-0 paper) — including dataset loading, model input preprocessing, and output postprocessing pipelines.
@@ -24,8 +24,8 @@ Ensure you have the following dependencies installed (consistent with GR00T's re
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-username/VLA-0-Accelerated.git
-cd VLA-0-Accelerated
+git clone https://github.com/your-username/VLA-0-Speedup.git
+cd VLA-0-Speedup
 
 # Setup virtual environment
 uv venv
@@ -90,7 +90,7 @@ python robot/eval/rollout_policy.py \
 
 ## Project Structure
 ```
-VLA-0-Accelerated/
+VLA-0-Speedup/
 ├── configs/          # GR00T-compatible configs (modality.json, etc.)
 ├── data/             # Dataset directory (LIBERO/GR00T format)
 ├── models/           # Qwen3-VL model weights
