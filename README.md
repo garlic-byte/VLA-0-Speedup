@@ -1,6 +1,4 @@
-# VLA-0-Speedup: 20x Faster VLA Model Training
-[![GitHub Stars](https://img.shields.io/github/stars/your-username/VLA-0-Speedup?style=social)](https://github.com/your-username/VLA-0-Speedup)
-[![GitHub License](https://img.shields.io/github/license/your-username/VLA-0-Speedup)](LICENSE)
+# VLA-0-Speedup: 20x Faster VLA-0 Model Training
 
 ## Project Overview
 This project is an **accelerated version of the VLA-0 project** with **20x faster training speed**. It is a lightweight replication of NVIDIA's [Isaac-GR00T](https://github.com/NVIDIA/Isaac-GR00T) project, optimized by reworking core logic from VLA-0 (leveraging ideas from the VLA-0 paper) — including dataset loading, model input preprocessing, and output postprocessing pipelines.
