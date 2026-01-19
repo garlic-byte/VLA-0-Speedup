@@ -111,7 +111,7 @@ VLA-0-Speedup/
 
 ## References
 1. **NVIDIA Isaac GR00T**: [https://github.com/NVIDIA/Isaac-GR00T](https://github.com/NVIDIA/Isaac-GR00T) (core design reference)
-2. **VLA-0**: [[Insert VLA-0 paper link here](https://github.com/NVlabs/vla0.git)] (core design reference)
+2. **VLA-0**: [https://github.com/NVlabs/vla0.git](https://github.com/NVlabs/vla0.git) (core design reference)
 3. **Qwen3-VL**: [https://github.com/QwenLM/Qwen-VL](https://github.com/QwenLM/Qwen-VL) (base vision-language model)
 4. **LIBERO Benchmark**: [https://libero-project.github.io/main.html](https://libero-project.github.io/main.html) (evaluation dataset)
 
