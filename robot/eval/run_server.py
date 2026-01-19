@@ -38,7 +38,6 @@ def main(config: ServerConfig):
     print(f"  Embodiment tag: ",data_config["modality_id"])
     print(f"  Resize image: ",data_config["image_resize"])
     print(f"  Fraction crop: ",data_config["crop_fraction"])
-    print(f"  Trained action name: ",data_config["action_name"])
     print(f"  Trained model path: {config.model_path}")
     print(f"  Device: {config.device}")
     print(f"  Host: {config.host}")

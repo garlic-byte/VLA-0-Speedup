@@ -89,7 +89,7 @@ def _extract_frames_ffmpeg(video_path: str, frame_indices: list[int]) -> np.ndar
 def get_frames_by_indices(
     video_path: Path,
     indices: List[int] | np.ndarray,
-    video_backend: Optional[Literal['decord', 'torchvision_av', 'torchcodec']] = "ffmpeg",
+    video_backend: str = "ffmpeg",
     video_backend_kwargs: dict = {},
 ) -> np.ndarray:
     if video_backend == "decord":

@@ -8,8 +8,11 @@ class DataConfig:
     """
     Configuration for dataset. It contains all parameters of dataset.
     """
-    dataset_path: str = ""
+    dataset_path: str = None
     """Path to the dataset root directory trajectory."""
+
+    dataset_weights: tuple[float, ...] | None = None
+    """Weight of the dataset for training."""
 
     modality_id: str = ""
     """Define the modality configuration for finetune."""
@@ -17,7 +20,7 @@ class DataConfig:
     seed: int = 64
     """Seed for the random number generator."""
 
-    image_resize: List[int] = field(default_factory=lambda: [224, 224])
+    image_resize: tuple[int, int] = (224, 224)
     """Size of the resized image."""
 
     crop_fraction: float = 0.95
@@ -26,23 +29,11 @@ class DataConfig:
     color_jitter: bool = True
     """Whether to apply color jitter, default brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08,"""
 
-    video_backend: Optional[Literal['decord', 'torchvision_av', 'torchcodec']] = "torchcodec"
+    video_backend: str = "torchcodec"
     """Type of video decord: 'decord', 'torchvision_av', 'torchcodec'."""
-
-    video_backend_kwargs: dict | None = None
-    """Extra arguments passed to the video backend."""
-
-    episode_split_ratio: float = 0.1
-    """One episode will be split into 1/episode_split_ratio episodes."""
-
-    shard_size: int = 2**10
-    """Size of one shard vessel, all episodes will be shutil and put them into different shard vessels."""
 
     mask_ratio: float = 0.2
     """Ratio of mask action according the VLA-0 model."""
-
-    num_bin_actions: int = 1000
-    """Map actions to integers from 0-num_bin_actions according the VLA-0 model."""
 
     is_train: bool = True
     """Whether the dataset is used for training."""
@@ -50,8 +41,8 @@ class DataConfig:
     vlm_processor_path: str = ""
     """Path to the qwen3-VL processor directory trajectory."""
 
-    action_name: str = "action"
-    """Which modality will be serve as the result (action, state)."""
+    config_output_dir: str = ""
+    """Path to the output directory for finetune configuration."""
 
 
 @dataclass
@@ -65,10 +56,10 @@ class ModelConfig(PretrainedConfig):
     dtype: str = "bfloat16"
     """Precision for training (float32, bfloat16, fp16)."""
 
-    tune_llm: bool = False
+    tune_llm: bool = True
     """If True, fine-tune the language action model."""
 
-    tune_visual: bool = False
+    tune_visual: bool = True
     """If True, fine-tune the visual model."""
 
     lora_rank: int = -1

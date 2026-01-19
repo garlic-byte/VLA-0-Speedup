@@ -1,12 +1,13 @@
 from transformers import Qwen3VLForConditionalGeneration, AutoModel
 from robot.config.finetune_config import ModelConfig
 import torch
-import logging
 from typing import Dict
 import torch.nn.functional as F
 from transformers import PreTrainedModel
 import torch.cuda.nvtx as nvtx
 import time
+
+from robot.utils import logging_model_load
 
 
 class Qwen3VLA(PreTrainedModel):
@@ -26,10 +27,10 @@ class Qwen3VLA(PreTrainedModel):
         for param in model.parameters():
             param.requires_grad = False
 
-        logging.info(f"----------------------------Model loaded----------------------------")
-        logging.info(f"[Model loaded] Path of loaded model: {self.config.model_path}")
+        finetune_modules = []
         # Activate parameters according configuration
         # Use Lora for training model
+
         if self.config.lora_rank > 1:
             from peft import LoraConfig, get_peft_model
 
@@ -43,23 +44,28 @@ class Qwen3VLA(PreTrainedModel):
                 target_modules=target_modules,
             )
             model = get_peft_model(model, lora_config)
-            logging.info(f"[Model loaded] Using LORA model for training, modules of lora contains: {target_modules}")
+
+            finetune_modules.append("Lora: ")
+            finetune_modules.append(target_modules)
         # Only training partly parameters of model
         else:
             if self.config.tune_llm:
                 for param in model.model.language_model.parameters():
                     param.requires_grad = True
-                logging.info(f"[Model loaded] Using partly parameters for training which contains: Language modules")
+                finetune_modules.append("Language modules")
             if self.config.tune_visual:
                 for param in model.model.visual.parameters():
                     param.requires_grad = True
-                logging.info(f"[Model loaded] Using partly parameters for training which contains: Visual modules")
+                finetune_modules.append("Visual modules")
 
         total_params = sum(p.numel() for p in model.parameters())
         total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        logging.info(f"[Model loaded] Total params: {total_params:,}")
-        logging.info(f"[Model loaded] Total trainable params: {total_trainable_params:,}, training radio: {total_trainable_params / total_params * 100:.2f}%")
-
+        logging_model_load(
+            model_path=self.config.model_path,
+            finetune_modules=finetune_modules,
+            total_params=total_params,
+            total_trainable_params=total_trainable_params,
+        )
         nvtx.range_pop()
         return model
 

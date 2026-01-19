@@ -3,13 +3,14 @@ import os.path
 import numpy as np
 
 from robot.config.data.modality_config import ModalityConfig
+from robot.config.finetune_config import DataConfig
 from robot.utils import write_config_to_json
 from robot.data.state_action_processor import StateActionProcessor
 from robot.data.image_processor import ImageProcessor
 from transformers import AutoProcessor, BatchFeature
 from qwen_vl_utils import process_vision_info
 from PIL import Image
-from typing import List, Dict
+from typing import List, Dict, Any
 import torch
 
 
@@ -17,14 +18,11 @@ class DatasetCollator:
     """
     Collator for one batch of dataset.
     """
-    def __init__(
-        self,
-        vlm_processor_path: str = "",
-        mask_ratio: float = 0.5,
-    ):
-        self.processor = AutoProcessor.from_pretrained(vlm_processor_path)
+    def __init__(self, config: DataConfig):
+
+        self.processor = AutoProcessor.from_pretrained(config.vlm_processor_path)
         self.processor.tokenizer.padding_side = "right"
-        self.mask_ratio = mask_ratio
+        self.mask_ratio = config.mask_ratio
 
     def __call__(self, features: List[Dict[str, any]]) -> BatchFeature:
         """
@@ -82,7 +80,7 @@ class Transformer:
         statistics: dict | None = None,
         clip_outliers: bool = True,
         input_shape: tuple[int, int] | None = None,
-        image_resize: list[int] | None = None,
+        image_resize: tuple[int, int] | None = None,
         crop_fraction: float = 0.95,
         color_jitter: bool = True,
         mask_ratio: float = 0.5,
@@ -109,9 +107,6 @@ class Transformer:
         self.action_dimensions = action_dimensions
         self.action_name = action_name
         self.config_output_dir = config_output_dir
-
-        # Save configurations of transformer
-        if config_output_dir is not None: self.save_config()
 
         # Create processor of states and actions
         self.state_action_processor = StateActionProcessor(
@@ -147,20 +142,18 @@ class Transformer:
                               f"Each timestamp is a one-dimensional list with a size of {action_dim}, "
                               f"with all joint values ranging from 0 to {self.num_bin_actions}. Only output the result, no other content."
                               )
-        # action_dimension = []
-        # for action_type, dimensions in self.action_dimensions.items():
-        #     action_dimension.append(f"{action_type} {dimensions} joints")
-        # system_instruction += ' -> '.join(action_dimension)
-
-        # system_instruction += f", with all joint values ranging from 0 to {self.num_bin_actions}. Only output the result string, no other content."
-
         return system_instruction
+
+    def set_statistics(self, statistics: dict[str, Any]):
+        """Set transformer statistics from multiple dataset."""
+        self.statistics = statistics
+        self.state_action_processor.set_statistics(statistics)
+        self.save_config()
 
     def save_config(self):
         """Save configurations to a json file."""
         transformer_config = {
             "modality_config": self.modality_config,
-            "statistics": self.statistics,
             "clip_outliers": self.clip_outliers,
             "input_shape": self.input_shape,
             "image_resize": self.image_resize,

@@ -1,10 +1,17 @@
 import json
+import logging
 import os
+import shutil
 from pathlib import Path
 import numpy as np
 from dataclasses import dataclass, field, asdict, is_dataclass
 from robot.config.data.modality_config import ModalityConfig
+import torch.distributed as dist
+import torch
 
+from robot.config.finetune_config import TrainConfig
+
+GLOBAL_RANK = 0
 
 def serialize_for_json(obj):
     """
@@ -68,8 +75,20 @@ def get_all_config_path(path):
     return config_dir_path
 
 
+def initialize_dist():
+    global GLOBAL_RANK
+    if dist.is_initialized():
+        GLOBAL_RANK = dist.get_rank()
+    elif "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 1:
+        dist.init_process_group(backend="nccl")
+        # only meaningful for torchrun, for ray it is always 0
+        local_rank = int(os.environ["LOCAL_RANK"])
+        torch.cuda.set_device(local_rank)
+        GLOBAL_RANK = dist.get_rank()
+
+
 def write_config_to_json(config: any, path: str):
-    """Save configurations to a json file."""
+    """Save configuration to a json file."""
     # Step 1. Convert configuration to dictory
     if is_dataclass(config): config = asdict(config)
     assert isinstance(config, dict), f"{type(config)} is not a dataclass object."
@@ -80,3 +99,63 @@ def write_config_to_json(config: any, path: str):
     # Step 3. Write to the file of json
     with open(path, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=4)
+
+def write_configs_to_jsons(config_output_dir, **kwargs):
+    """Save configurations to json files."""
+    global GLOBAL_RANK
+    if GLOBAL_RANK != 0:
+        return
+
+    # Create dictory from config_output_dir
+    os.makedirs(config_output_dir, exist_ok=True)
+
+    # Write configuration to json file
+    for config_name, config in kwargs.items():
+        write_config_to_json(config, os.path.join(config_output_dir, f"{config_name}.json"))
+
+
+def logging_train_config(config: TrainConfig):
+    """Configure logging for training parameters."""
+    global GLOBAL_RANK
+    if GLOBAL_RANK != 0:
+        return
+
+    prefix = "[Train loaded]"
+    param_format = f"{prefix: <16} {{: <35}}: {{}}"
+
+    logging.info(f"----------------------------Train loaded----------------------------")
+    logging.info(param_format.format("Learning rate", config.learning_rate))
+    logging.info(param_format.format("Per device train batch size", config.per_device_train_batch_size))
+    logging.info(param_format.format("Gradient accumulation steps", config.gradient_accumulation_steps))
+    logging.info(param_format.format("Global batch size (all ranks)", config.global_batch_size))
+    logging.info(param_format.format("Dataloader number of workers", config.dataloader_num_workers))
+    logging.info(param_format.format("Output path of directory", config.output_dir))
+    logging.info(f"--------------------------------------------------------------------")
+
+
+def logging_model_load(
+    model_path: str,
+    finetune_modules: list = None,
+    total_params: int = None,
+    total_trainable_params: int = None,
+):
+    global GLOBAL_RANK
+    if GLOBAL_RANK != 0:
+        return
+    logging.info(f"----------------------------Model loaded----------------------------")
+    logging.info(f"[Model loaded] Path of loaded model: {model_path}")
+    logging.info(f"[Model loaded] Using partly parameters for training which contains: {finetune_modules} modules")
+    logging.info(f"[Model loaded] Total params: {total_params:,}")
+    logging.info(f"[Model loaded] Total trainable params: {total_trainable_params:,}, training radio: {total_trainable_params / total_params * 100:.2f}%")
+
+
+def setup_logging(debug: bool = False):
+    """Configure logging."""
+    logging.basicConfig(
+        level=logging.DEBUG if debug else logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%m/%d/%Y %I:%M:%S %p",
+    )
+    # Reduce some libraries
+    # logging.getLogger("transformers").setLevel(logging.WARNING)
+    # logging.getLogger("datasets").setLevel(logging.WARNING)

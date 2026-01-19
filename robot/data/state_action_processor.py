@@ -129,6 +129,9 @@ class StateActionProcessor:
         self.action_dimensions = action_dimensions
         self.action_name = action_name
 
+    def set_statistics(self, statistics):
+        """Set state and action statistics from multiple dataset."""
+        self.statistics = statistics
 
     def _convert_action_to_text(self, action: dict[str, np.ndarray]):
         """

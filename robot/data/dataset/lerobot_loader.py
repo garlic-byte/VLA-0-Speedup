@@ -7,8 +7,7 @@ import time
 from typing import Optional, Literal
 
 from robot.config.data.modality_config import ModalityConfig
-from robot.utils.video_utils import get_frames_by_indices
-
+from robot.utils import get_frames_by_indices, process_parquet_files_optimized
 
 LEROBOT_META_DIR_NAME = "meta"
 LEROBOT_INFO_FILENAME = "info.json"
@@ -28,7 +27,7 @@ class LerobotLoader:
         self,
         dataset_path: str | Path,
         modality_config: dict[str, ModalityConfig],
-        video_backend: Optional[Literal['decord', 'torchvision_av', 'torchcodec']] = "torchcodec",
+        video_backend: str = "torchcodec",
         video_backend_kwargs: dict = None,
         action_name: str = "action",
     ) -> None:
@@ -64,6 +63,10 @@ class LerobotLoader:
 
         with open(meta_path / LEROBOT_MODALITY_FILENAME, "r") as f:
             self.modality_meta = json.load(f)
+
+        # Calculate stats
+        if not (meta_path / LEROBOT_STATS_FILENAME).exists():
+            process_parquet_files_optimized(str(self.dataset_path), LEROBOT_STATS_FILENAME)
         with open(meta_path / LEROBOT_STATS_FILENAME, "r") as f:
             self.stats_meta = json.load(f)
 
@@ -101,10 +104,8 @@ class LerobotLoader:
         Return example: {
             'state.arm': {
                 'mean': np.ndarray,
-                'std': np.ndarray,
                 'min': np.ndarray,
                 'max': np.ndarray,
-                ...
                 }
         }
         """
@@ -123,7 +124,7 @@ class LerobotLoader:
                 # modality type need converted
                 original_key = DEFAULT_MODALITY_MAP[modality_type]
                 statistics[f"{modality_type}.{modality}"] = {}
-                for stats_type in ["mean", "std", "min", "max", "q01", "q99"]:
+                for stats_type in ["mean", "min", "max"]:
                     statistics[f"{modality_type}.{modality}"][stats_type] = (
                         np.array(self.stats_meta[original_key][stats_type][start_idx:end_idx]).astype(np.float32)
                     )

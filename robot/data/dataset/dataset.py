@@ -1,5 +1,6 @@
 import logging
-from typing import Dict
+from dataclasses import field
+from typing import Dict, List
 import pandas as pd
 
 from robot.config.finetune_config import DataConfig
@@ -15,33 +16,46 @@ from robot.config.data.embodiment_config import MODALITY_CONFIGS
 
 class SingleLerobotDataset(Dataset):
 
-    def __init__(self, config: DataConfig, config_output_dir: str | None = None):
+    def __init__(
+        self,
+        modality_id: str,
+        dataset_path: str,
+        video_backend: str = "torchcodec",
+        video_backend_kwargs: str | None = None,
+        seed: int = 64,
+        episode_split_ratio: float = 0.1,
+        shard_size: int = 2**10,
+        mask_ratio: float = 0.2,
+        num_bin_actions: int = 1000,
+        image_resize: tuple[int, int] = (224, 224),
+        crop_fraction: float = 0.95,
+        color_jitter: bool = True,
+        is_train: bool = True,
+        vlm_processor_path: str = "",
+        config_output_dir: str = "",
+    ):
         """Initialize the Lerobot dataset."""
         super().__init__()
-        self._modality_id = config.modality_id
-        self.action_name = config.action_name
-        self.dataset_path = config.dataset_path
-        self.modality_config = MODALITY_CONFIGS[config.modality_id]
-        # Varify action in modality config
-        assert self.action_name in self.modality_config, f"Use modality name {self.action_name} for training is not in modality config."
+        self._modality_id = modality_id
+        self.dataset_path = dataset_path
+        self.modality_config = MODALITY_CONFIGS[modality_id]
 
         # Load dataset of lerobot form
         self.dataset = LerobotLoader(
-            dataset_path=config.dataset_path,
+            dataset_path=dataset_path,
             modality_config=self.modality_config,
-            video_backend=config.video_backend,
-            video_backend_kwargs=config.video_backend_kwargs,
-            action_name=self.action_name,
+            video_backend=video_backend,
+            video_backend_kwargs=video_backend_kwargs,
         )
         # Create balanced shards from episode timesteps
-        self._seed = config.seed
-        self.rng = np.random.default_rng(config.seed)
-        self.episode_split_ratio = config.episode_split_ratio
-        self.dataset_path = config.dataset_path
-        self.modality_config = self.modality_config
+        self._seed = seed
+        self.rng = np.random.default_rng(seed)
+        self.episode_split_ratio = episode_split_ratio
+        self.dataset_path = dataset_path
+        self.action_name = 'action'
         action_delta_indices = self.modality_config[self.action_name].delta_indices
         self._action_horizon = max(action_delta_indices) - min(action_delta_indices) + 1
-        self.shard_size = config.shard_size
+        self.shard_size = shard_size
         self.shard_episodes = None
         self.shard_lengths = None
         self.shard_dataset()
@@ -50,35 +64,25 @@ class SingleLerobotDataset(Dataset):
         self.transformer = Transformer(
             modality_config=self.modality_config,
             statistics=self.dataset.get_dataset_statistics(),
-            mask_ratio=config.mask_ratio,
-            num_bin_actions=config.num_bin_actions,
+            mask_ratio=mask_ratio,
+            num_bin_actions=num_bin_actions,
             input_shape=self.dataset.get_image_shape(),
-            image_resize=config.image_resize,
-            crop_fraction=config.crop_fraction,
-            color_jitter=config.color_jitter,
-            is_train=config.is_train,
-            vlm_processor_path=config.vlm_processor_path,
+            image_resize=image_resize,
+            crop_fraction=crop_fraction,
+            color_jitter=color_jitter,
+            is_train=is_train,
+            vlm_processor_path=vlm_processor_path,
             predict_action_nums=len(action_delta_indices),
             action_dimensions=self.dataset.get_action_dimensions(),
             action_name=self.action_name,
             config_output_dir=config_output_dir,
         )
 
-        # Transform VLM inputs into model inputs for one batch samples
-        self._collator = DatasetCollator(
-            vlm_processor_path=config.vlm_processor_path,
-            mask_ratio=config.mask_ratio,
-        )
 
     @property
     def modality_id(self):
         """Get the modality type."""
         return self._modality_id
-
-    @property
-    def collator(self):
-        """Get the collator class."""
-        return self._collator
 
     @property
     def action_horizon(self):
@@ -92,8 +96,14 @@ class SingleLerobotDataset(Dataset):
 
     @property
     def get_dataset_statistics(self):
-        """Get dataset statistics."""
+        """Get dataset statistics from single dataset."""
         return self.dataset.get_dataset_statistics()
+
+    def set_dataset_statistics(self, statistics):
+        """Set statistics from multiple datasets."""
+        logging.info(f"[Data loaded] Merging dataset: {self.dataset_path}")
+        self.transformer.set_statistics(statistics)
+
 
     @property
     def seed(self):
@@ -109,7 +119,7 @@ class SingleLerobotDataset(Dataset):
         """
         Create balanced shards by distributing episode timesteps across shards.
         This sharding process:
-        1. Shuffle all episode from datasets
+        1. Shuffle all episode from dataset
         2. Split each episode into multiple sub-sequences based on sampling rate
         3. Distribute sub-sequences across shards to balance shard sizes
         4. Use greedy assignment to minimize shard size variance
@@ -119,7 +129,7 @@ class SingleLerobotDataset(Dataset):
         num_splits = int(1/ self.episode_split_ratio)
         assert len(shutil_episode_indices) > 0, f"{self.dataset_path} is empty!"
 
-        # Calculate total effective numbers of datasets
+        # Calculate total effective numbers of dataset
         total_effective_length = np.sum(
             [self.get_effective_lengths(episode_index) for episode_index in shutil_episode_indices]
         ).astype(int)
@@ -155,6 +165,11 @@ class SingleLerobotDataset(Dataset):
     def __len__(self):
         """Return the total number of shard vessels."""
         return len(self.shard_episodes)
+
+    def get_avg_shard_lengths(self):
+        """Return the average shard lengths."""
+        return np.sum(self.shard_lengths) / len(self.shard_lengths)
+
 
     def get_step_data(self, episode_data: pd.DataFrame, step_index: int) -> Dict:
         """
@@ -221,91 +236,102 @@ class SingleLerobotDataset(Dataset):
         return one_episode_data
 
 
-class ShardCacheDataset(IterableDataset):
-    """
-    Background shard caching with ThreadPoolExecutor for efficiency load dataset.
-    """
-    epoch = -1
-    cur_shard = None
-    cur_shard_index = 0
-    _executor = None
-    _cache_job: Future = None
-    def __init__(self, dataset: SingleLerobotDataset):
-        self.dataset = dataset
-        self.seed = dataset.seed
-
-        # Initialize rank and world
-        if dist.is_initialized():
-            self.world_size = dist.get_world_size()
-            self.rank = dist.get_rank()
-        else:
-            self.world_size = 1
-            self.rank = 0
-
-
-    def _initialize_sample_schedule(self) -> list:
-        """Return sample schedule from dataset."""
-        rng = np.random.default_rng(self.seed + self.epoch)
-        sample_indices = list(range(len(self.dataset)))
-        rng.shuffle(sample_indices)
-        return sample_indices
-
-    def _filter_sample_schedule(self, sample_indices) -> list:
-        """Return filtered samples schedule according to current rank and worker_id."""
-        cur_worker_info = get_worker_info()
-        if cur_worker_info is not None:
-            cur_worker_id = cur_worker_info.id
-            total_workers = cur_worker_info.num_workers
-        else:
-            cur_worker_id = 0
-            total_workers = 1
-
-        filtered_sample_indices = []
-        for index, sample_index in enumerate(sample_indices):
-            if index % (self.world_size * total_workers) == self.rank * total_workers + cur_worker_id:
-                filtered_sample_indices.append(sample_index)
-        return filtered_sample_indices
-    
-    def _reset_environment(self):
-        """Reset environment after each epoch."""
-        self.epoch += 1
-        self.cur_shard_index = 0
-        cur_sample_schedule = self._initialize_sample_schedule()
-        self.filtered_sample_indices = self._filter_sample_schedule(cur_sample_schedule)
-
-    
-    def _start_get_shard(self):
-        """Get shard from dataset through thread."""
-        if self.cur_shard_index >= len(self.filtered_sample_indices):
-            self._reset_environment()
-
-        self._cache_job = self._executor.submit(self.dataset.get_shard,self.filtered_sample_indices[self.cur_shard_index])
-
-    def _wait_get_shard(self):
-        """Wait until shard is load."""
-        assert self._executor is not None
-        self.cur_shard = self._cache_job.result()
-        self.cur_shard_index += 1
-
-
-    def __iter__(self):
-        """Iterate over dataset use thread for efficiency load dataset."""
-        self._executor = ThreadPoolExecutor(max_workers=1)
-        self._reset_environment()
-        rng = np.random.default_rng(self.seed + self.epoch)
-
-        # Start caching next shard dataset
-        self._start_get_shard()
-        while True:
-            start_time = time.time()
-            self._wait_get_shard()
-            end_time = time.time()
-            logging.info(f"[Data loaded] Load shard {self.cur_shard_index} took {end_time - start_time} seconds.")
-
-            self._start_get_shard()
-            episode_indices = list(range(len(self.cur_shard)))
-            rng.shuffle(episode_indices)
-            for episode_index in episode_indices:
-                yield self.cur_shard[episode_index]
-
+#
+# class ShardCacheDataset(IterableDataset):
+#     """
+#     Background shard caching with ThreadPoolExecutor for efficiency load dataset.
+#     """
+#     epoch = -1
+#     cur_shard = None
+#     cur_shard_index = 0
+#     _executor = None
+#     _cache_job: Future = None
+#     def __init__(self, config: DataConfig):
+#         self.dataset = SingleLerobotDataset(
+#                     modality_id=config.modality_id,
+#                     dataset_path=config.dataset_path,
+#                     video_backend=config.video_backend,
+#                     seed=config.seed,
+#                     mask_ratio=config.mask_ratio,
+#                     image_resize=config.image_resize,
+#                     is_train=config.is_train,
+#                     vlm_processor_path=config.vlm_processor_path,
+#                     config_output_dir=config.config_output_dir,
+#             )
+#         self.seed = self.dataset.seed
+#
+#         # Initialize rank and world
+#         if dist.is_initialized():
+#             self.world_size = dist.get_world_size()
+#             self.rank = dist.get_rank()
+#         else:
+#             self.world_size = 1
+#             self.rank = 0
+#
+#
+#     def _initialize_sample_schedule(self) -> list:
+#         """Return sample schedule from dataset."""
+#         rng = np.random.default_rng(self.seed + self.epoch)
+#         sample_indices = list(range(len(self.dataset)))
+#         rng.shuffle(sample_indices)
+#         return sample_indices
+#
+#     def _filter_sample_schedule(self, sample_indices) -> list:
+#         """Return filtered samples schedule according to current rank and worker_id."""
+#         cur_worker_info = get_worker_info()
+#         if cur_worker_info is not None:
+#             cur_worker_id = cur_worker_info.id
+#             total_workers = cur_worker_info.num_workers
+#         else:
+#             cur_worker_id = 0
+#             total_workers = 1
+#
+#         filtered_sample_indices = []
+#         for index, sample_index in enumerate(sample_indices):
+#             if index % (self.world_size * total_workers) == self.rank * total_workers + cur_worker_id:
+#                 filtered_sample_indices.append(sample_index)
+#         return filtered_sample_indices
+#
+#     def _reset_environment(self):
+#         """Reset environment after each epoch."""
+#         self.epoch += 1
+#         self.cur_shard_index = 0
+#         cur_sample_schedule = self._initialize_sample_schedule()
+#         self.filtered_sample_indices = self._filter_sample_schedule(cur_sample_schedule)
+#
+#
+#     def _start_get_shard(self):
+#         """Get shard from dataset through thread."""
+#         if self.cur_shard_index >= len(self.filtered_sample_indices):
+#             self._reset_environment()
+#
+#         self._cache_job = self._executor.submit(self.dataset.get_shard,self.filtered_sample_indices[self.cur_shard_index])
+#
+#     def _wait_get_shard(self):
+#         """Wait until shard is load."""
+#         assert self._executor is not None
+#         self.cur_shard = self._cache_job.result()
+#         self.cur_shard_index += 1
+#
+#
+#     def __iter__(self):
+#         """Iterate over dataset use thread for efficiency load dataset."""
+#         self._executor = ThreadPoolExecutor(max_workers=1)
+#         self._reset_environment()
+#         rng = np.random.default_rng(self.seed + self.epoch)
+#
+#         # Start caching next shard dataset
+#         self._start_get_shard()
+#         while True:
+#             start_time = time.time()
+#             self._wait_get_shard()
+#             end_time = time.time()
+#             logging.info(f"[Data loaded] Load shard {self.cur_shard_index} took {end_time - start_time} seconds.")
+#
+#             self._start_get_shard()
+#             episode_indices = list(range(len(self.cur_shard)))
+#             rng.shuffle(episode_indices)
+#             for episode_index in episode_indices:
+#                 yield self.cur_shard[episode_index]
+#
 
