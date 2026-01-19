@@ -40,7 +40,7 @@ huggingface-cli download \
     --local-dir data/libero_spatial_no_noops_1.0.0_lerobot/
 
 # Copy modality config (GR00T-compatible)
-cp configs/modality.json data/libero_spatial_no_noops_1.0.0_lerobot/meta/
+cp datasets/modality.json datasets/libero_spatial_no_noops_1.0.0_lerobot/meta/
 ```
 For full details, refer to: [GR00T LIBERO Spatial Finetune Guide](https://github.com/NVIDIA/Isaac-GR00T/blob/main/examples/LIBERO/README.md#finetune-libero-spatial-dataset)
 
