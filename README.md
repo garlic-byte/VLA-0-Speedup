@@ -5,6 +5,8 @@ This project is an **accelerated version of the VLA-0 project** with **20x faste
 
 The core goal is to retain the core capabilities of VLA (Vision-Language-Action) models while drastically improving training efficiency, making it easier to iterate on VLA model development for robotic manipulation tasks.
 
+![图片描述](media/libero_10_gpus_1_batch_size_8_datasets_10_full.png)
+
 ## Key Features
 - **20x Faster Training**: Optimized dataset loading and data processing pipelines (inspired by GR00T's sharded dataloader design).
 - **GR00T Compatibility**: Follows GR00T's data preparation and evaluation workflows for seamless integration with existing GR00T-based benchmarks (e.g., LIBERO).
